@@ -1,0 +1,5 @@
+__pycache__
+backend/db.sqlite3
+.env
+SingulariumInternshipAssignment2025.pdf
+.DS_Store
