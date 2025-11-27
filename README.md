@@ -214,3 +214,32 @@ smartTaskAnalyzer/
    - Excludes weekends (Saturday, Sunday)
    - Excludes common holidays
    - Shows working days context in task explanations
+
+## Time Breakdown
+
+| Section | Time Spent |
+|---------|------------|
+| Project Setup (Django, DRF, frontend structure) | 30 min |
+| Core Algorithm Design (scoring.py) | 45 min |
+| API Endpoints & Views | 30 min |
+| Input Validation & Error Handling | 20 min |
+| Frontend Development (HTML, CSS, JS) | 45 min |
+| Circular Dependency Detection | 20 min |
+| Unit Tests (39 tests) | 45 min |
+| Date Intelligence Feature | 30 min |
+| Documentation & README | 15 min |
+| **Total** | **~4.5 hours** |
+
+## Future Improvements
+
+With more time, the following enhancements could be made:
+
+1. **User Authentication**: Add user accounts to save personal task lists and preferences across sessions.
+
+2. **Custom Strategy Builder**: Allow users to define their own weight combinations instead of only using preset strategies.
+
+3. **Recurring Tasks**: Support for tasks that repeat daily, weekly, or monthly with automatic urgency recalculation.
+
+4. **Calendar Integration**: Sync with Google Calendar or Outlook to automatically import events as tasks and block time.
+
+5. **Team Collaboration**: Multi-user support with task assignment, shared projects, and team-level dependency tracking.
