@@ -37,6 +37,21 @@ Tasks are categorized based on their final score:
 - **Medium** (≥4): Normal priority
 - **Low** (<4): Can be deferred
 
+### Date Intelligence (Bonus Feature)
+
+The algorithm includes **smart date handling** that considers weekends and holidays when calculating urgency:
+
+- **Working Days Calculation**: Instead of counting calendar days, the algorithm counts only working days (Monday-Friday, excluding holidays)
+- **Weekend Awareness**: A task due on Monday checked on Friday shows higher urgency because there's only 1 working day, not 3 calendar days
+- **Holiday Support**: Common holidays (New Year's, Independence Day, Christmas, Boxing Day) are excluded from working day counts
+- **Configurable**: Holidays can be customized per region/organization
+
+**Example**: If today is Friday and a task is due Monday:
+- Calendar days: 3 days → Medium urgency
+- Working days: 1 day → High urgency (more accurate for work planning)
+
+This feature helps users understand their *actual* available work time before deadlines.
+
 ## Setup Instructions
 
 ### Prerequisites
@@ -184,3 +199,18 @@ smartTaskAnalyzer/
 - **Backend**: Python, Django 4.2, Django REST Framework
 - **Frontend**: HTML5, CSS3, Vanilla JavaScript
 - **Database**: SQLite (development)
+
+## Bonus Challenges Implemented
+
+1. **Unit Tests** (45 min) - 39 comprehensive tests covering:
+   - Urgency, effort, importance, and dependency scoring
+   - Circular dependency detection
+   - Input validation and normalization
+   - API endpoints
+   - Date intelligence features
+
+2. **Date Intelligence** (30 min) - Smart urgency calculation that:
+   - Counts working days instead of calendar days
+   - Excludes weekends (Saturday, Sunday)
+   - Excludes common holidays
+   - Shows working days context in task explanations

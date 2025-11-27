@@ -1,5 +1,5 @@
 from datetime import date, timedelta
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Tuple, Any, Optional, Set
 
 STRATEGY_WEIGHTS = {
     'smart_balance': {'urgency': 0.30, 'importance': 0.30, 'effort': 0.20, 'dependency': 0.20},
@@ -8,16 +8,73 @@ STRATEGY_WEIGHTS = {
     'deadline_driven': {'urgency': 0.60, 'importance': 0.15, 'effort': 0.10, 'dependency': 0.15},
 }
 
+DEFAULT_HOLIDAYS: Set[Tuple[int, int]] = {
+    (1, 1),    # New Year's Day
+    (7, 4),    # Independence Day (US)
+    (12, 25),  # Christmas
+    (12, 26),  # Boxing Day
+}
+
+def is_weekend(d: date) -> bool:
+    return d.weekday() >= 5
+
+def is_holiday(d: date, holidays: Set[Tuple[int, int]] = None) -> bool:
+    if holidays is None:
+        holidays = DEFAULT_HOLIDAYS
+    return (d.month, d.day) in holidays
+
+def is_working_day(d: date, holidays: Set[Tuple[int, int]] = None) -> bool:
+    return not is_weekend(d) and not is_holiday(d, holidays)
+
+def count_working_days(
+    start_date: date,
+    end_date: date,
+    holidays: Set[Tuple[int, int]] = None
+) -> int:
+    if start_date > end_date:
+        return -count_working_days(end_date, start_date, holidays)
+
+    working_days = 0
+    current = start_date
+
+    while current <= end_date:
+        if is_working_day(current, holidays):
+            working_days += 1
+        current += timedelta(days=1)
+
+    if is_working_day(start_date, holidays):
+        working_days -= 1
+
+    return working_days
+
+def get_next_working_day(d: date, holidays: Set[Tuple[int, int]] = None) -> date:
+    next_day = d + timedelta(days=1)
+    while not is_working_day(next_day, holidays):
+        next_day += timedelta(days=1)
+    return next_day
+
 def calculate_urgency_score(
-    due_date: Optional[date], 
-    today: Optional[date] = None
+    due_date: Optional[date],
+    today: Optional[date] = None,
+    use_working_days: bool = True,
+    holidays: Set[Tuple[int, int]] = None
 ) -> float:
     if due_date is None:
         return 1.0
     if today is None:
         today = date.today()
 
-    days_until_due = (due_date - today).days
+    if use_working_days:
+        days_until_due = count_working_days(today, due_date, holidays)
+
+        if not is_working_day(due_date, holidays):
+            check_date = due_date - timedelta(days=1)
+            while not is_working_day(check_date, holidays) and check_date > today:
+                check_date -= timedelta(days=1)
+            if check_date <= today:
+                days_until_due = 0
+    else:
+        days_until_due = (due_date - today).days
 
     if days_until_due < 0:
         overdue_days = abs(days_until_due)
@@ -78,7 +135,6 @@ def calculate_dependency_score(
 
     return min(10.0, base_score + blocker_bonus)
 
-
 def detect_circular_dependencies(tasks: List[Dict]) -> Tuple[bool, List[List[int]]]:
     graph = {}
     task_ids = set()
@@ -119,7 +175,6 @@ def detect_circular_dependencies(tasks: List[Dict]) -> Tuple[bool, List[List[int
 
     return len(cycles) > 0, cycles
 
-
 def get_blocked_task_ids(tasks: List[Dict]) -> set:
     task_ids = {task.get('id') for task in tasks if task.get('id') is not None}
     blocked = set()
@@ -134,11 +189,11 @@ def get_blocked_task_ids(tasks: List[Dict]) -> set:
 
     return blocked
 
-
 def generate_explanation(
     task: Dict,
     scores: Dict[str, float],
-    days_until_due: Optional[int]
+    days_until_due: Optional[int],
+    working_days_until_due: Optional[int] = None
 ) -> str:
     explanations = []
 
@@ -153,6 +208,11 @@ def generate_explanation(
             explanations.append(f"Due in {days_until_due} days")
         elif days_until_due <= 7:
             explanations.append("Due this week")
+
+        if (working_days_until_due is not None and
+            days_until_due > 0 and
+            working_days_until_due != days_until_due):
+            explanations.append(f"({working_days_until_due} working days)")
 
     importance = task.get('importance', 5)
     if importance >= 8:
@@ -173,7 +233,6 @@ def generate_explanation(
 
     return " | ".join(explanations) if explanations else "Standard priority task"
 
-
 def get_priority_level(score: float) -> str:
     if score >= 7:
         return 'high'
@@ -182,10 +241,11 @@ def get_priority_level(score: float) -> str:
     else:
         return 'low'
 
-
 def calculate_priority_scores(
     tasks: List[Dict],
-    strategy: str = 'smart_balance'
+    strategy: str = 'smart_balance',
+    use_working_days: bool = True,
+    holidays: Set[Tuple[int, int]] = None
 ) -> Dict[str, Any]:
     if not tasks:
         return {
@@ -195,7 +255,8 @@ def calculate_priority_scores(
             'metadata': {
                 'total_tasks': 0,
                 'has_circular_dependencies': False,
-                'circular_dependency_cycles': []
+                'circular_dependency_cycles': [],
+                'date_intelligence_enabled': use_working_days
             },
             'warnings': ['No tasks provided for analysis']
         }
@@ -226,10 +287,13 @@ def calculate_priority_scores(
                 warnings.append(f"Invalid date format for task {task_id}")
 
         days_until_due = None
+        working_days_until_due = None
         if due_date:
             days_until_due = (due_date - today).days
+            if use_working_days:
+                working_days_until_due = count_working_days(today, due_date, holidays)
 
-        urgency = calculate_urgency_score(due_date, today)
+        urgency = calculate_urgency_score(due_date, today, use_working_days, holidays)
         importance = calculate_importance_score(task.get('importance', 5))
         effort = calculate_effort_score(task.get('estimated_hours', 2))
         dependency = calculate_dependency_score(task_id, tasks, blocked_task_ids)
@@ -248,7 +312,7 @@ def calculate_priority_scores(
             'dependency': round(dependency, 2)
         }
 
-        explanation = generate_explanation(task, scores, days_until_due)
+        explanation = generate_explanation(task, scores, days_until_due, working_days_until_due)
 
         priority_level = get_priority_level(priority_score)
 
@@ -268,6 +332,7 @@ def calculate_priority_scores(
             'scores': scores,
             'explanation': explanation,
             'is_overdue': is_overdue,
+            'working_days_until_due': working_days_until_due,
             '_raw_urgency': urgency
         }
 
@@ -285,7 +350,8 @@ def calculate_priority_scores(
         'metadata': {
             'total_tasks': len(scored_tasks),
             'has_circular_dependencies': has_cycles,
-            'circular_dependency_cycles': cycles
+            'circular_dependency_cycles': cycles,
+            'date_intelligence_enabled': use_working_days
         },
         'warnings': warnings
     }

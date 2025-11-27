@@ -9,7 +9,10 @@ from .scoring import (
     calculate_dependency_score,
     detect_circular_dependencies,
     calculate_priority_scores,
-    get_top_suggestions
+    get_top_suggestions,
+    is_weekend,
+    is_working_day,
+    count_working_days
 )
 from .validators import validate_and_normalize_task, validate_task_list, validate_strategy
 from .models import Task
@@ -17,34 +20,34 @@ from .models import Task
 class UrgencyScoreTests(TestCase):
     def test_overdue_task_gets_high_urgency(self):
         yesterday = date.today() - timedelta(days=1)
-        score = calculate_urgency_score(yesterday, date.today())
+        score = calculate_urgency_score(yesterday, date.today(), use_working_days=False)
         self.assertGreaterEqual(score, 10)
 
     def test_overdue_task_increases_with_days(self):
         one_day_overdue = date.today() - timedelta(days=1)
         five_days_overdue = date.today() - timedelta(days=5)
 
-        score_1 = calculate_urgency_score(one_day_overdue, date.today())
-        score_5 = calculate_urgency_score(five_days_overdue, date.today())
+        score_1 = calculate_urgency_score(one_day_overdue, date.today(), use_working_days=False)
+        score_5 = calculate_urgency_score(five_days_overdue, date.today(), use_working_days=False)
 
         self.assertGreater(score_5, score_1)
 
     def test_task_due_today_gets_score_10(self):
-        score = calculate_urgency_score(date.today(), date.today())
+        score = calculate_urgency_score(date.today(), date.today(), use_working_days=False)
         self.assertEqual(score, 10.0)
 
     def test_task_due_tomorrow_gets_score_9(self):
         tomorrow = date.today() + timedelta(days=1)
-        score = calculate_urgency_score(tomorrow, date.today())
+        score = calculate_urgency_score(tomorrow, date.today(), use_working_days=False)
         self.assertEqual(score, 9.0)
 
     def test_task_due_in_week_gets_medium_urgency(self):
         due_date = date.today() + timedelta(days=5)
-        score = calculate_urgency_score(due_date, date.today())
+        score = calculate_urgency_score(due_date, date.today(), use_working_days=False)
         self.assertEqual(score, 6.0)
 
     def test_task_without_due_date_gets_low_urgency(self):
-        score = calculate_urgency_score(None, date.today())
+        score = calculate_urgency_score(None, date.today(), use_working_days=False)
         self.assertEqual(score, 1.0)
 
 class EffortScoreTests(TestCase):
@@ -279,3 +282,81 @@ class APIEndpointTests(APITestCase):
         response = self.client.get('/api/tasks/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['count'], 2)
+
+
+class DateIntelligenceTests(TestCase):
+    def test_saturday_is_weekend(self):
+        today = date.today()
+        days_until_saturday = (5 - today.weekday()) % 7
+        if days_until_saturday == 0:
+            days_until_saturday = 7
+        saturday = today + timedelta(days=days_until_saturday)
+        self.assertTrue(is_weekend(saturday))
+
+    def test_sunday_is_weekend(self):
+        today = date.today()
+        days_until_sunday = (6 - today.weekday()) % 7
+        if days_until_sunday == 0:
+            days_until_sunday = 7
+        sunday = today + timedelta(days=days_until_sunday)
+        self.assertTrue(is_weekend(sunday))
+
+    def test_monday_is_not_weekend(self):
+        today = date.today()
+        days_until_monday = (0 - today.weekday()) % 7
+        if days_until_monday == 0:
+            days_until_monday = 7
+        monday = today + timedelta(days=days_until_monday)
+        self.assertFalse(is_weekend(monday))
+
+    def test_working_day_excludes_weekend(self):
+        today = date.today()
+        days_until_saturday = (5 - today.weekday()) % 7
+        if days_until_saturday == 0:
+            days_until_saturday = 7
+        saturday = today + timedelta(days=days_until_saturday)
+        self.assertFalse(is_working_day(saturday))
+
+    def test_working_day_excludes_holiday(self):
+        christmas = date(2025, 12, 25)
+        self.assertFalse(is_working_day(christmas))
+
+    def test_count_working_days_excludes_weekends(self):
+        monday = date(2025, 12, 1)
+        friday = date(2025, 12, 5)
+        working_days = count_working_days(monday, friday)
+        self.assertEqual(working_days, 4)
+
+    def test_count_working_days_over_weekend(self):
+        friday = date(2025, 12, 5)
+        monday = date(2025, 12, 8)
+        working_days = count_working_days(friday, monday)
+        self.assertEqual(working_days, 1)
+
+    def test_urgency_with_working_days_more_urgent_before_weekend(self):
+        friday = date(2025, 12, 5)
+        monday = date(2025, 12, 8)
+
+        score_with_working_days = calculate_urgency_score(
+            monday, friday, use_working_days=True
+        )
+        score_without_working_days = calculate_urgency_score(
+            monday, friday, use_working_days=False
+        )
+
+        self.assertGreaterEqual(score_with_working_days, score_without_working_days)
+
+    def test_priority_scores_include_working_days_info(self):
+        tasks = [{
+            'id': 1,
+            'title': 'Test task',
+            'due_date': (date.today() + timedelta(days=5)).isoformat(),
+            'estimated_hours': 2,
+            'importance': 5,
+            'dependencies': []
+        }]
+
+        result = calculate_priority_scores(tasks, 'smart_balance', use_working_days=True)
+
+        self.assertTrue(result['metadata']['date_intelligence_enabled'])
+        self.assertIn('working_days_until_due', result['tasks'][0])
